@@ -1,0 +1,53 @@
+{
+  "entities": {
+    "Feedback": {
+      "title": "Feedback",
+      "description": "User feedback submission",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "category": { "type": "string", "enum": ["Admissions", "Registrar", "Treasury", "SDAO", "LRC", "ITSO", "Others"] },
+        "otherCategory": { "type": "string" },
+        "ratings": {
+          "type": "object",
+          "properties": {
+            "responsiveness": { "type": "number" },
+            "courtesy": { "type": "number" },
+            "clarity": { "type": "number" },
+            "efficiency": { "type": "number" },
+            "accessibility": { "type": "number" },
+            "overall": { "type": "number" }
+          },
+          "required": ["responsiveness", "courtesy", "clarity", "efficiency", "accessibility", "overall"]
+        },
+        "likedMost": { "type": "string" },
+        "improvements": { "type": "string" },
+        "status": { "type": "string", "enum": ["Pending", "In Progress", "Resolved"] },
+        "createdAt": { "type": "number" },
+        "timestamp": { "type": "object" }
+      },
+      "required": ["userId", "userName", "category", "ratings", "likedMost", "improvements", "status", "createdAt"]
+    },
+    "Admin": {
+      "title": "Admin",
+      "description": "Authorized admin users",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string" },
+        "role": { "type": "string", "enum": ["admin"] }
+      },
+      "required": ["email", "role"]
+    }
+  },
+  "firestore": {
+    "feedbacks/{feedbackId}": {
+      "schema": "Feedback",
+      "description": "Collection of university feedback"
+    },
+    "admins/{adminId}": {
+      "schema": "Admin",
+      "description": "Collection of administrator users"
+    }
+  }
+}
