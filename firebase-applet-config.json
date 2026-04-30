@@ -1,10 +1,10 @@
 {
-  "projectId": "palawan-pay",
-  "appId": "1:490521544249:web:466257200d741e23376fe8",
-  "apiKey": "AIzaSyASexkIj8Z6ZZjWcEGOcgrhJNb7tFQPdjM",
-  "authDomain": "palawan-pay.firebaseapp.com",
+  "projectId": "feedback-nul",
+  "appId": "1:908755083720:web:bac737c9e41b68353260fd",
+  "apiKey": "AIzaSyDyO14CTiee9RCnJEkHYGN_4whgcog7AqQ",
+  "authDomain": "feedback-nul.firebaseapp.com",
   "firestoreDatabaseId": "ai-studio-63b60efc-91e0-4f0d-88c1-11692b342e64",
-  "storageBucket": "palawan-pay.firebasestorage.app",
-  "messagingSenderId": "490521544249",
+  "storageBucket": "feedback-nul.firebasestorage.app",
+  "messagingSenderId": "908755083720",
   "measurementId": ""
 }

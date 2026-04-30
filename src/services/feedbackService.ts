@@ -55,12 +55,7 @@ export async function submitFeedback(feedback: Omit<Feedback, 'id' | 'createdAt'
   if (!db) throw new Error("Database not connected");
 
   const path = 'feedbacks';
-  console.log("Submitting feedback to path:", path);
-
-  const timeoutPromise = new Promise((_, reject) => 
-    setTimeout(() => reject(new Error("Request timed out. Please check your internet connection.")), 15000)
-  );
-
+  
   try {
     const feedbackData = {
       ...feedback,
@@ -68,12 +63,7 @@ export async function submitFeedback(feedback: Omit<Feedback, 'id' | 'createdAt'
       createdAt: Date.now()
     };
 
-    console.log("Calling addDoc...");
-    const submitPromise = addDoc(collection(db, path), feedbackData);
-    
-    const docRef = await Promise.race([submitPromise, timeoutPromise]) as any;
-    
-    console.log("addDoc successful, ID:", docRef.id);
+    const docRef = await addDoc(collection(db, path), feedbackData);
     return docRef.id;
   } catch (error) {
     console.error("Error in submitFeedback:", error);
@@ -87,7 +77,7 @@ export async function getFeedbacks() {
 
   const path = 'feedbacks';
   try {
-    const q = query(collection(db, path), orderBy('createdAt', 'desc'));
+    const q = query(collection(db, path));
     const snapshot = await getDocs(q);
     return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Feedback));
   } catch (error) {

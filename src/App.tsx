@@ -29,10 +29,10 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { QRCodeSVG } from 'qrcode.react';
 import { FeedbackCategory, Feedback, FeedbackStatus, RatingLabel, FeedbackRatings } from './types';
-import { analyzeFeedback, summarizeResults } from './services/geminiService';
+import { summarizeResults } from './services/geminiService';
 import { submitFeedback, getFeedbacks } from './services/feedbackService';
 import { getFirebase } from './firebase';
-import { signInAnonymously, signOut, onAuthStateChanged, signInWithEmailAndPassword } from 'firebase/auth';
+import { signOut, onAuthStateChanged } from 'firebase/auth';
 
 // Smileys and Labels for the 7-scaler
 const RATING_SCALE = [
@@ -56,7 +56,6 @@ const QUESTIONS = [
 export default function App() {
   const [isSuccess, setIsSuccess] = useState(false);
   const [view, setView] = useState<'form' | 'admin'>('form');
-  const [lastSummary, setLastSummary] = useState<{sentiment: string, summary: string} | null>(null);
   
   // Form State
   const [category, setCategory] = useState<FeedbackCategory | ''>('');
@@ -76,12 +75,13 @@ export default function App() {
   // Admin State
   const [adminUsername, setAdminUsername] = useState('');
   const [allFeedbacks, setAllFeedbacks] = useState<Feedback[]>([]);
-  const [aiGlobalSummary, setAiGlobalSummary] = useState('');
-  const [isSummarizing, setIsSummarizing] = useState(false);
   const [adminFilter, setAdminFilter] = useState<'All' | FeedbackCategory>('All');
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [adminPin, setAdminPin] = useState('');
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
+  const [isAdminLoading, setIsAdminLoading] = useState(false);
+  const [aiGlobalSummary, setAiGlobalSummary] = useState('');
+  const [isSummarizing, setIsSummarizing] = useState(false);
 
   const CATEGORY_ICONS: Record<FeedbackCategory, React.ReactNode> = {
     [FeedbackCategory.ADMISSIONS]: <UserPlus size={24} />,
@@ -134,46 +134,29 @@ export default function App() {
     setIsSubmitting(true);
     try {
       const { auth } = await getFirebase();
-      if (auth && !auth.currentUser) {
-        console.log("Signing in anonymously...");
-        try {
-          await signInAnonymously(auth);
-          console.log("Anonymous sign-in success");
-        } catch (authErr) {
-          console.warn("Auth failed, proceeding anyway:", authErr);
-        }
-      }
-
+      
       const data: any = {
-        userId: auth?.currentUser?.uid || 'anonymous',
+        userId: auth?.currentUser?.uid || 'anonymous-bulldog',
         userName: 'Anonymous Bulldog',
         category: category as FeedbackCategory,
         ratings,
         likedMost,
         improvements,
+        status: FeedbackStatus.PENDING,
+        createdAt: Date.now()
       };
 
       if (category === FeedbackCategory.OTHERS && otherCategory) {
         data.otherCategory = otherCategory;
       }
 
-      console.log("Invoking submitFeedback...");
       await submitFeedback(data);
-      console.log("Feedback submitted successfully");
       setIsSuccess(true);
     } catch (e: any) {
-      console.error("Submission Error Details:", e);
-      let errorMsg = "Submission failed: ";
-      
+      console.error("Submission Error:", e);
+      let errorMsg = "Submission failed. Mangyaring subukan muli.";
       if (e.message && e.message.includes("timed out")) {
-        errorMsg = "Submission timed out. Please check your internet connection and Firebase configuration.";
-      } else if (e.message && e.message.startsWith('{')) {
-        try {
-          const parsed = JSON.parse(e.message);
-          errorMsg += parsed.error || e.message;
-        } catch { errorMsg += e.message; }
-      } else {
-        errorMsg += e.message || "Unknown error";
+        errorMsg = "Submission timed out. Please check your internet connection.";
       }
       alert(errorMsg);
     } finally {
@@ -184,16 +167,8 @@ export default function App() {
   const handleAdminAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     if (adminUsername.toLowerCase() === 'admin' && adminPin === '1900') {
-      const { auth } = await getFirebase();
-      if (auth && !auth.currentUser) {
-        try {
-          await signInAnonymously(auth);
-        } catch (err) {
-          console.error("Auth Error:", err);
-        }
-      }
       setIsAdminAuthenticated(true);
-      loadAdminData();
+      await loadAdminData();
     } else {
       alert("Maling Username o Password.");
     }
@@ -204,25 +179,46 @@ export default function App() {
     if (auth) {
       await signOut(auth);
       setIsAdminAuthenticated(false);
+      setAdminPin('');
+      setAdminUsername('');
       setView('form');
     }
   };
 
   const loadAdminData = async () => {
+    setIsAdminLoading(true);
     try {
       const data = await getFeedbacks();
-      setAllFeedbacks(data as any);
-    } catch (e) {
-      console.error(e);
+      console.log(`Loaded ${data?.length || 0} feedbacks`);
+      // Manual sort as fallback
+      const sorted = (data as any[] || []).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+      setAllFeedbacks(sorted);
+      if (!data || data.length === 0) {
+        console.warn("No data returned from Firestore");
+      }
+    } catch (e: any) {
+      console.error("Admin Load Error:", e);
+      let msg = "Failed to load responses.";
+      if (e.message && e.message.includes("permissions")) msg = "Security permission denied.";
+      if (e.message && e.message.includes("index")) msg = "Missing database index. Please wait a few minutes.";
+      alert(msg);
+    } finally {
+      setIsAdminLoading(false);
     }
   };
 
   const generateSummary = async () => {
     setIsSummarizing(true);
-    const filtered = adminFilter === 'All' ? allFeedbacks : allFeedbacks.filter(f => f.category === adminFilter);
-    const summary = await summarizeResults(filtered);
-    setAiGlobalSummary(summary || '');
-    setIsSummarizing(false);
+    try {
+      const filtered = adminFilter === 'All' ? allFeedbacks : allFeedbacks.filter(f => f.category === adminFilter);
+      const summary = await summarizeResults(filtered);
+      setAiGlobalSummary(summary || '');
+    } catch (err) {
+      console.error("Summary error:", err);
+      alert("Could not generate AI summary.");
+    } finally {
+      setIsSummarizing(false);
+    }
   };
 
   const exportToCSV = () => {
@@ -282,7 +278,7 @@ export default function App() {
       <nav className="bg-white/80 backdrop-blur-md border-b border-slate-200 sticky top-0 z-50">
         <div className="max-w-4xl mx-auto px-6">
           <div className="flex justify-between h-20 items-center">
-            <div className="flex items-center gap-3 cursor-pointer group" onClick={() => window.location.reload()}>
+            <div className="flex items-center gap-3 cursor-pointer group" onClick={() => (window.location.href = '/')}>
               <motion.div whileHover={{ rotate: 5 }} className="bg-[#35408f] p-2.5 rounded-xl shadow-lg shadow-[#35408f]/10 transition-all">
                  <GraduationCap className="text-[#febd11]" size={24} />
               </motion.div>
@@ -291,15 +287,14 @@ export default function App() {
                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em]">Feedback Portal</span>
               </div>
             </div>
-            <button 
-              onClick={() => {
-                if (view === 'admin') setView('form');
-                else setView('admin');
-              }}
-              className="text-[11px] font-black text-[#35408f] bg-[#35408f]/5 uppercase tracking-[0.2em] px-5 py-2.5 rounded-full hover:bg-[#35408f] hover:text-white transition-all border border-[#35408f]/10"
-            >
-              {view === 'admin' ? 'Submit Feedback' : 'Admin Portal'}
-            </button>
+            {view === 'admin' && (
+              <button 
+                onClick={() => setView('form')}
+                className="text-[11px] font-black text-[#35408f] bg-[#35408f]/5 uppercase tracking-[0.2em] px-5 py-2.5 rounded-full hover:bg-[#35408f] hover:text-white transition-all border border-[#35408f]/10"
+              >
+                Submit Feedback
+              </button>
+            )}
           </div>
         </div>
       </nav>
@@ -500,28 +495,6 @@ export default function App() {
                 <p className="text-slate-400 font-bold uppercase tracking-[0.5em] text-[11px]">Your voice strengthens our community</p>
               </div>
 
-              {lastSummary && (
-                 <motion.div 
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="max-w-xl mx-auto p-10 bg-slate-50 rounded-[3rem] border border-slate-100 text-left relative overflow-hidden group shadow-sm hover:shadow-xl transition-all"
-                 >
-                    <div className="relative z-10 space-y-4">
-                      <div className="flex items-center justify-between">
-                        <p className="text-[10px] font-black text-[#35408f] uppercase tracking-widest">Sentiment Analysis Result</p>
-                        <div className={`px-4 py-1.5 rounded-full border text-[9px] font-black uppercase tracking-widest ${
-                          lastSummary.sentiment === 'positive' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' :
-                          lastSummary.sentiment === 'negative' ? 'bg-red-50 text-red-600 border-red-100' :
-                          'bg-amber-50 text-amber-600 border-amber-100'
-                        }`}>
-                          {lastSummary.sentiment} Tone
-                        </div>
-                      </div>
-                      <p className="text-xl font-bold text-slate-800 leading-relaxed italic">"{lastSummary.summary}"</p>
-                    </div>
-                 </motion.div>
-              )}
-
               <div className="flex flex-col items-center gap-6 pt-8">
                 <button 
                   onClick={() => window.location.reload()}
@@ -572,8 +545,11 @@ export default function App() {
                     <header className="space-y-8">
                       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
                         <div>
-                          <h2 className="text-5xl font-black text-[#35408f] tracking-tighter uppercase leading-none">Intelligence</h2>
-                          <p className="text-slate-400 font-bold uppercase tracking-[0.3em] text-[10px]">Administrative Monitoring Dashboard</p>
+                          <h2 className="text-5xl font-black text-[#35408f] tracking-tighter uppercase leading-none">Responses Dashboard</h2>
+                          <p className="text-slate-400 font-bold uppercase tracking-[0.3em] text-[10px] mt-2">
+                             {allFeedbacks.length} Total Records Recorded 
+                             {adminFilter !== 'All' && ` • ${filteredFeedbacks.length} filtered by ${adminFilter}`}
+                          </p>
                         </div>
                         <div className="flex gap-4">
                            <button 
@@ -591,15 +567,43 @@ export default function App() {
                            >
                               <Download size={24} />
                            </button>
-                           <button onClick={loadAdminData} className="p-3 bg-white border border-slate-200 rounded-2xl text-slate-400 hover:text-[#35408f] transition-all hover:shadow-lg">
+                           <button 
+                             onClick={loadAdminData} 
+                             className="p-3 bg-white border border-slate-200 rounded-2xl text-[#35408f] hover:bg-slate-50 transition-all hover:shadow-lg"
+                             title="Refresh Data"
+                           >
                               <CheckCircle2 size={24} />
                            </button>
-                           <button onClick={generateSummary} disabled={isSummarizing || filteredFeedbacks.length === 0} className="nu-gradient text-white px-8 py-3 rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl flex items-center gap-3 disabled:opacity-50">
+                           <button 
+                            onClick={generateSummary} 
+                            disabled={isSummarizing || filteredFeedbacks.length === 0}
+                            className="nu-gradient text-white px-6 py-3 rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-xl flex items-center gap-3 disabled:opacity-50"
+                           >
                             {isSummarizing ? <Loader2 size={16} className="animate-spin" /> : <MessageSquare size={16} />}
                             AI Global Summary
                            </button>
                         </div>
                       </div>
+
+                      {/* AI Global Summary */}
+                      <AnimatePresence>
+                        {aiGlobalSummary && (
+                          <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden">
+                            <div className="bg-[#35408f] p-10 rounded-[3rem] text-white space-y-6 shadow-2xl relative overflow-hidden group">
+                              <div className="relative z-10 flex items-center justify-between">
+                                <div className="inline-flex items-center gap-3 px-4 py-1.5 bg-[#febd11]/20 rounded-full border border-[#febd11]/30">
+                                  <div className="w-2 h-2 bg-[#febd11] rounded-full animate-pulse" />
+                                  <h3 className="text-[10px] font-black uppercase tracking-widest text-[#febd11]">Gemini Insight Protocol</h3>
+                                </div>
+                                <button onClick={() => setAiGlobalSummary('')} className="text-white/40 hover:text-white transition-colors">Dismiss</button>
+                              </div>
+                              <div className="relative z-10 font-medium leading-relaxed text-lg opacity-90 pr-8 whitespace-pre-wrap">
+                                {aiGlobalSummary}
+                              </div>
+                            </div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
 
                       {/* Stats Grid */}
                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
@@ -621,29 +625,6 @@ export default function App() {
                         ))}
                       </div>
                     </header>
-
-                    {/* AI Global Summary */}
-                    <AnimatePresence>
-                      {aiGlobalSummary && (
-                        <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden">
-                          <div className="bg-[#35408f] p-12 rounded-[4rem] text-white space-y-8 shadow-2xl relative overflow-hidden group">
-                            <div className="absolute top-0 right-0 p-12 opacity-5 rotate-12 group-hover:scale-110 transition-transform"><MessageSquare size={200} /></div>
-                            <div className="relative z-10 flex items-center justify-between">
-                              <div className="inline-flex items-center gap-3 px-4 py-1.5 bg-[#febd11]/20 rounded-full border border-[#febd11]/30">
-                                <div className="w-2 h-2 bg-[#febd11] rounded-full animate-pulse" />
-                                <h3 className="text-[11px] font-black uppercase tracking-[0.3em] text-[#febd11]">Gemini Insight Protocol</h3>
-                              </div>
-                              <button onClick={() => setAiGlobalSummary('')} className="text-white/40 hover:text-white transition-colors">Dismiss</button>
-                            </div>
-                            <div className="relative z-10 prose prose-invert max-w-none font-medium leading-[1.8] text-xl tracking-tight opacity-90">
-                              {aiGlobalSummary.split('\n').map((line, i) => (
-                                <p key={i} className={line.startsWith('-') ? 'ml-6' : ''}>{line}</p>
-                              ))}
-                            </div>
-                          </div>
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
 
                     {/* Department Filter Pills */}
                     <div className="flex flex-wrap items-center gap-2 pb-4 scrollbar-hide overflow-x-auto whitespace-nowrap">
@@ -670,7 +651,12 @@ export default function App() {
 
                     {/* Results Feed */}
                     <div className="grid gap-8">
-                      {filteredFeedbacks.length === 0 ? (
+                      {isAdminLoading ? (
+                        <div className="bg-white py-32 rounded-[4rem] text-center border border-slate-100 flex flex-col items-center gap-6">
+                           <Loader2 size={48} className="animate-spin text-[#35408f]" />
+                           <p className="text-slate-400 font-black uppercase tracking-widest text-sm">Fetching Responses...</p>
+                        </div>
+                      ) : filteredFeedbacks.length === 0 ? (
                         <div className="bg-white py-32 rounded-[4rem] text-center border-4 border-dashed border-slate-100 flex flex-col items-center gap-6">
                            <div className="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center text-slate-200">
                               <Building2 size={32} />
@@ -754,7 +740,13 @@ export default function App() {
 
       {/* Redesigned Minimal Footer */}
       <footer className="fixed bottom-8 left-0 right-0 z-40 pointer-events-none">
-          <div className="max-w-4xl mx-auto px-6 flex justify-end items-center opacity-40">
+          <div className="max-w-4xl mx-auto px-6 flex justify-between items-center opacity-40">
+             <button 
+               onClick={() => setView('admin')} 
+               className="pointer-events-auto text-[9px] font-black text-slate-400 uppercase tracking-widest hover:text-[#35408f] transition-colors"
+             >
+               System Access
+             </button>
              <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest leading-none">Education that Works • Since 1900</p>
           </div>
       </footer>

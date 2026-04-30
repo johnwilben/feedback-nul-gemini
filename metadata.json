@@ -1,6 +1,6 @@
 {
   "name": "NU Laguna Feedback System",
-  "description": "An AI-powered QR feedback platform for NU Laguna, featuring automated sentiment analysis, location-based tagging, and a real-time admin monitoring dashboard.",
+  "description": "A QR feedback platform for NU Laguna, featuring location-based tagging and a real-time admin monitoring dashboard.",
   "requestFramePermissions": [],
   "majorCapabilities": []
 }

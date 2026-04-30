@@ -4,7 +4,7 @@
 Since we have implemented Username/Password login for the Admin Dashboard, you need to create the admin account in your Firebase Console.
 
 1. Go to the [Firebase Console](https://console.firebase.google.com/).
-2. Select your project **palawan-pay**.
+2. Select your project **feedback-nul**.
 3. In the left sidebar, go to **Authentication**.
 4. Go to the **Users** tab and click **Add user**.
 5. Enter an email (e.g., `admin@nulaguna.edu.ph`) and a password (e.g., `laguna1900`).

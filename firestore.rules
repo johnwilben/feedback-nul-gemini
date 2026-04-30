@@ -27,7 +27,14 @@ service cloud.firestore {
     }
 
     match /feedbacks/{feedbackId} {
-      allow read, write: if true;
+      // Allow public creation of feedback
+      allow create: if isValidFeedback(incoming());
+      
+      // Allow reading feedbacks (Admin uses this)
+      allow read: if true; // In a production app, this would be restricted to Admin, but for now we keep it open for the dashboard
+      
+      // Protect updates/deletes
+      allow update, delete: if false; 
     }
 
     match /admins/{adminId} {
