@@ -1,7 +1,12 @@
 import { GoogleGenAI } from "@google/genai";
 import { FeedbackCategory } from "../types";
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+const getApiKey = () => {
+  const meta = (import.meta as any);
+  return (meta.env?.VITE_GEMINI_API_KEY) || (process.env.GEMINI_API_KEY as string);
+};
+
+const ai = new GoogleGenAI({ apiKey: getApiKey() });
 
 export async function analyzeFeedback(text: string) {
   try {
